@@ -150,7 +150,7 @@ start() {
 
     # set up the lxc network
     [ ! -d /sys/class/net/${LXC_BRIDGE} ] && ip link add dev ${LXC_BRIDGE} type bridge
-    echo 1 > /proc/sys/net/ipv4/ip_forward
+    [ "$(cat /proc/sys/net/ipv4/ip_forward)" = 1 ] || echo 1 > /proc/sys/net/ipv4/ip_forward
     echo 0 > /proc/sys/net/ipv6/conf/${LXC_BRIDGE}/accept_dad || true
 
     # if we are run from systemd on a system with selinux enabled,
