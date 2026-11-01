@@ -10,6 +10,7 @@ import dbus
 
 stopping = False
 bus_signals = []
+retry_interval = 2
 
 def start(args, session):
 
@@ -66,21 +67,25 @@ def start(args, session):
         for listener in listeners:
             listener.onActionInvoked(int(notification_id), str(action_id), str(token))
 
-    def service_thread():
-        while not stopping:
-            INotifications.add_service(args, registerListener, notify, closeNotification)
-
-    try:
-        dbus_proxy = dbus.Interface(dbus.SessionBus().get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications"),
-                                    "org.freedesktop.Notifications")
-    except dbus.DBusException as e:
-        logging.info("Skipping notification manager service because we could not connect to the notifications server: %s", str(e))
-        return
-
     listeners = []
     pending_tokens = dict()
-    bus_signals.append(dbus_proxy.connect_to_signal("ActivationToken", onActivationToken))
-    bus_signals.append(dbus_proxy.connect_to_signal("ActionInvoked", onActionInvoked))
+
+    def service_thread():
+        while not stopping:
+            try:
+                dbus_proxy = dbus.Interface(
+                    dbus.SessionBus().get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications"),
+                    "org.freedesktop.Notifications")
+                bus_signals.append(dbus_proxy.connect_to_signal("ActivationToken", onActivationToken))
+                bus_signals.append(dbus_proxy.connect_to_signal("ActionInvoked", onActionInvoked))
+                INotifications.add_service(args, registerListener, notify, closeNotification)
+            except dbus.DBusException as e:
+                if not stopping:
+                    logging.info("Waiting for the notifications server: %s", str(e))
+                    threading.Event().wait(retry_interval)
+            finally:
+                while bus_signals:
+                    bus_signals.pop().remove()
 
     global stopping
     stopping = False
